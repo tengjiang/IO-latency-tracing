@@ -4,7 +4,7 @@ Simple program using eBPF to trace IO latency.
 ## Usage
 ```
 make
-sudo ./io_latency.out 5
+sudo ./iolatency.out <print time interval>
 ```
 
 ## IO workload generation with ```fio```
