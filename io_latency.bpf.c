@@ -14,39 +14,6 @@
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
-
-// Idea 1, with open and close
-
-// syscall_enter_open, syscall_exit_open
-// syscall_enter_openat, syscall_exit_openat
-// syscall_enter_openat2, syscall_exit_openat2
-// Todo: 1. Which task opens which file 2. map it to interval and count it
-// Use a map to save the opened time of a fd (open/openat)
-// Use a map to save the count of each interval (key is the left of each interval) [l, r)
-// Upon closing, write the IO time to the second map
-
-// Map of type hash (essentially a key-value store)
-// Key: fd number
-// Value: time when open/openat was called
-
-// struct {
-// 	__uint(type, BPF_MAP_TYPE_PERCPU_HASH);
-// 	__type(key, f64);
-// 	__type(value, f64);
-// 	__uint(max_entries, 500);  // most linux systems have 300-400 syscalls
-// } syscall_id_to_count SEC(".maps");
-
-// Idea 2, with block IO request trace points
-// void trace_block_rq_issue(struct request *rq)
-// void trace_block_rq_complete(struct request *rq, blk_status_t error, unsigned int nr_bytes)¶
-// trace_block_io_done(struct request *rq)¶
-
-
-// SEC name is important! libbpf infers program type from it.
-// See: https://docs.kernel.org/bpf/libbpf/program_types.html#program-types-and-elf
-
-// SEC name inspired by: https://github.com/bpftrace/bpftrace/blob/master/docs/tutorial_one_liners.md
-
 #define MAX_ENTRIES	10240
 
 struct {
@@ -64,6 +31,30 @@ struct {
 	__type(key, __u8);
 	__type(value, struct hist);
 } hist SEC(".maps");
+
+
+static __always_inline u64 log2(u32 v)
+{
+	u32 shift, r;
+
+	r = (v > 0xFFFF) << 4; v >>= r;
+	shift = (v > 0xFF) << 3; v >>= shift; r |= shift;
+	shift = (v > 0xF) << 2; v >>= shift; r |= shift;
+	shift = (v > 0x3) << 1; v >>= shift; r |= shift;
+	r |= (v >> 1);
+
+	return r;
+}
+
+static __always_inline u64 log2l(u64 v)
+{
+	u32 hi = v >> 32;
+
+	if (hi)
+		return log2(hi) + 32;
+	else
+		return log2(v);
+}
 
 static int __always_inline trace_rq_start(struct request *rq)
 {
@@ -93,8 +84,8 @@ int BPF_PROG(trace_block_rq_insert, struct request *rq)
 SEC("raw_tp/block_rq_complete")
 int BPF_PROG(trace_block_rq_complete, struct request *rq)
 {
-    // int pid = bpf_get_current_pid_tgid() >> 32; 
-    // bpf_printk("BPF triggered from PID %d. rq complete\n", pid);
+    int pid = bpf_get_current_pid_tgid() >> 32; 
+    bpf_printk("BPF triggered from PID %d. rq complete\n", pid);
     u64 slot, *tsp, ts;
     s64 delta;
     struct hist *histp;
@@ -117,8 +108,9 @@ int BPF_PROG(trace_block_rq_complete, struct request *rq)
     if (!histp) {
 		bpf_map_update_elem(&hist, &zero, &initial_hist, 0);
 		histp = bpf_map_lookup_elem(&hist, &zero);
-		if (!histp)
-			goto cleanup;
+		if (!histp) {
+            goto cleanup;
+        }
 	}
 
     delta /= 1000U;
