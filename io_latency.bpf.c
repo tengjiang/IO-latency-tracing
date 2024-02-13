@@ -7,6 +7,10 @@
 #include "vmlinux.h"
 // BPF helpers
 #include <bpf/bpf_helpers.h>
+#include <bpf/bpf_core_read.h>
+#include <bpf/bpf_tracing.h>
+
+#include "io_latency.h"
 
 char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
@@ -25,12 +29,12 @@ char LICENSE[] SEC("license") = "Dual BSD/GPL";
 // Key: fd number
 // Value: time when open/openat was called
 
-struct {
-	__uint(type, BPF_MAP_TYPE_PERCPU_HASH);
-	__type(key, f64);
-	__type(value, f64);
-	__uint(max_entries, 500);  // most linux systems have 300-400 syscalls
-} syscall_id_to_count SEC(".maps");
+// struct {
+// 	__uint(type, BPF_MAP_TYPE_PERCPU_HASH);
+// 	__type(key, f64);
+// 	__type(value, f64);
+// 	__uint(max_entries, 500);  // most linux systems have 300-400 syscalls
+// } syscall_id_to_count SEC(".maps");
 
 // Idea 2, with block IO request trace points
 // void trace_block_rq_issue(struct request *rq)
@@ -40,20 +44,26 @@ struct {
 
 // SEC name is important! libbpf infers program type from it.
 // See: https://docs.kernel.org/bpf/libbpf/program_types.html#program-types-and-elf
-SEC("tracepoint")
-int handle_tracepoint(void *ctx) {
+
+// SEC name inspired by: https://github.com/bpftrace/bpftrace/blob/master/docs/tutorial_one_liners.md
+
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__type(key, struct request *);
+	__type(value, __u64); // time stamp
+    __uint(max_entries, 10240);
+} start SEC(".maps");
+
+
+// SEC("tracepoint/block/block_rq_issue")
+SEC("raw_tp/block_rq_issue")
+int BPF_PROG(trace_block_rq_issue, struct request *req)
+{
     // bpf_get_current_pid_tgid is a helper function!
-    int pid = bpf_get_current_pid_tgid() >> 32;
+    int pid = bpf_get_current_pid_tgid() >> 32; 
     bpf_printk("BPF triggered from PID %d.\n", pid);
 
     return 0;
 }
 
-SEC("traceio")
-int handle_traceio(void *ctx) {
-    // bpf_get_current_pid_tgid is a helper function!
-    int pid = bpf_get_current_pid_tgid() >> 32;
-    bpf_printk("BPF triggered from PID %d.\n", pid);
-
-    return 0;
-}
+// int trace_block_rq_issue(struct bpf_raw_tracepoint_args* ctx)
