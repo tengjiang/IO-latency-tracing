@@ -67,25 +67,18 @@ static int __always_inline trace_rq_start(struct request *rq)
 SEC("raw_tp/block_rq_issue")
 int BPF_PROG(trace_block_rq_issue, struct request *rq)
 {
-    // int pid = bpf_get_current_pid_tgid() >> 32; 
-    // bpf_printk("BPF triggered from PID %d. rq issue\n", pid);
     return trace_rq_start(rq);
 }
 
 SEC("raw_tp/block_rq_insert")
 int BPF_PROG(trace_block_rq_insert, struct request *rq)
 {
-    // int pid = bpf_get_current_pid_tgid() >> 32; 
-    // bpf_printk("BPF triggered from PID %d. rq insert\n", pid);
     return trace_rq_start(rq);
-    
 }
 
 SEC("raw_tp/block_rq_complete")
 int BPF_PROG(trace_block_rq_complete, struct request *rq)
 {
-    int pid = bpf_get_current_pid_tgid() >> 32; 
-    bpf_printk("BPF triggered from PID %d. rq complete\n", pid);
     u64 slot, *tsp, ts;
     s64 delta;
     struct hist *histp;
