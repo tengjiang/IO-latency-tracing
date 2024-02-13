@@ -54,7 +54,7 @@ struct {
 	__type(key, struct request *); // key: pointer to BIO request
 	__type(value, __u64); // time stamp
     __uint(max_entries, MAX_ENTRIES);
-} start SEC(".maps");
+} starts SEC(".maps");
 
 static struct hist initial_hist;
 
@@ -63,18 +63,71 @@ struct {
 	__uint(max_entries, 1);
 	__type(key, __u8);
 	__type(value, struct hist);
-} hists SEC(".maps");
+} hist SEC(".maps");
 
-
-// SEC("tracepoint/block/block_rq_issue")
-SEC("raw_tp/block_rq_issue")
-int BPF_PROG(trace_block_rq_issue, struct request *req)
+static int __always_inline trace_rq_start(struct request *rq)
 {
-    // bpf_get_current_pid_tgid is a helper function!
-    int pid = bpf_get_current_pid_tgid() >> 32; 
-    bpf_printk("BPF triggered from PID %d.\n", pid);
-
+    u64 ts;
+    ts = bpf_ktime_get_ns();
+    bpf_map_update_elem(&starts, &rq, &ts, 0);
     return 0;
 }
 
-// int trace_block_rq_issue(struct bpf_raw_tracepoint_args* ctx)
+SEC("raw_tp/block_rq_issue")
+int BPF_PROG(trace_block_rq_issue, struct request *rq)
+{
+    // int pid = bpf_get_current_pid_tgid() >> 32; 
+    // bpf_printk("BPF triggered from PID %d. rq issue\n", pid);
+    return trace_rq_start(rq);
+}
+
+SEC("raw_tp/block_rq_insert")
+int BPF_PROG(trace_block_rq_insert, struct request *rq)
+{
+    // int pid = bpf_get_current_pid_tgid() >> 32; 
+    // bpf_printk("BPF triggered from PID %d. rq insert\n", pid);
+    return trace_rq_start(rq);
+    
+}
+
+SEC("raw_tp/block_rq_complete")
+int BPF_PROG(trace_block_rq_complete, struct request *rq)
+{
+    // int pid = bpf_get_current_pid_tgid() >> 32; 
+    // bpf_printk("BPF triggered from PID %d. rq complete\n", pid);
+    u64 slot, *tsp, ts;
+    s64 delta;
+    struct hist *histp;
+    u8 zero;
+    
+    zero = 0;
+
+    ts = bpf_ktime_get_ns();
+
+    tsp = bpf_map_lookup_elem(&starts, &rq);
+    if (!tsp)
+        return 0;
+    
+    delta = (s64)(ts - *tsp);
+    if (delta < 0)
+		goto cleanup;
+
+    histp = bpf_map_lookup_elem(&hist, &zero);
+
+    if (!histp) {
+		bpf_map_update_elem(&hist, &zero, &initial_hist, 0);
+		histp = bpf_map_lookup_elem(&hist, &zero);
+		if (!histp)
+			goto cleanup;
+	}
+
+    delta /= 1000U;
+    slot = log2l(delta);
+	if (slot >= MAX_SLOTS)
+	    slot = MAX_SLOTS - 1;
+	__sync_fetch_and_add(&histp->slots[slot], 1);
+    
+cleanup:
+	bpf_map_delete_elem(&starts, &rq);
+    return 0;
+}
