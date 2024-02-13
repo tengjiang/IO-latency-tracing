@@ -7,11 +7,20 @@
 
 #include "io_latency.h"
 
-int main() {
+int main(int argc, char *argv[]) {
+    
     struct bpf_object *obj;
     struct bpf_program *prog;
     struct bpf_link *link;
     int prog_fd;
+    int time_interval;
+
+    // Check for input
+    if (argc != 2) {
+        fprintf(stderr, "Usage: %s [print time interval]\n", argv[0]);
+        return EXIT_FAILURE;
+    }
+    time_interval = atoi(argv[1]);
 
     // Load and verify BPF application
     fprintf(stderr, "Loading BPF code in memory\n");
@@ -42,7 +51,8 @@ int main() {
     }
     // Check it out at: /sys/kernel/debug/tracing/events/block/block_rq_issue
     // link = bpf_program__attach_tracepoint(prog, "block", "block_rq_issue");
-    link = bpf_program__attach_raw_tracepoint(prog, "block_rq_issue");
+    // link = bpf_program__attach_raw_tracepoint(prog, "block_rq_issue");
+    link = bpf_program__attach(prog);
 
     if (libbpf_get_error(link)) {
         fprintf(stderr, "ERROR: Attaching BPF program to tracepoint failed\n");

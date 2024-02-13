@@ -47,12 +47,23 @@ char LICENSE[] SEC("license") = "Dual BSD/GPL";
 
 // SEC name inspired by: https://github.com/bpftrace/bpftrace/blob/master/docs/tutorial_one_liners.md
 
+#define MAX_ENTRIES	10240
+
 struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
-	__type(key, struct request *);
+	__type(key, struct request *); // key: pointer to BIO request
 	__type(value, __u64); // time stamp
-    __uint(max_entries, 10240);
+    __uint(max_entries, MAX_ENTRIES);
 } start SEC(".maps");
+
+static struct hist initial_hist;
+
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(max_entries, 1);
+	__type(key, __u8);
+	__type(value, struct hist);
+} hists SEC(".maps");
 
 
 // SEC("tracepoint/block/block_rq_issue")
