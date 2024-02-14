@@ -141,7 +141,7 @@ int main(int argc, char *argv[]) {
         err = bpf_map_lookup_elem(map_fd, &zero, &hist);
         if (err < 0) {
 			fprintf(stderr, "failed to lookup hist: %d\n", err);
-			return -1;
+			break;
 		}
 
         print_log2_hist(hist.slots, MAX_SLOTS, "usecs");
@@ -149,7 +149,7 @@ int main(int argc, char *argv[]) {
         err = bpf_map_delete_elem(map_fd, &zero);
 		if (err < 0) {
 			fprintf(stderr, "failed to cleanup hist : %d\n", err);
-			return -1;
+			break;
 		}
     }
 
